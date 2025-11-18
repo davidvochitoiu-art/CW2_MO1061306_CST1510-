@@ -6,5 +6,9 @@
     "Nahid": {
         "password_hash": "6ea6f03d4c7592c1b887698332f5f9798894bced7ccd99a069d5ad47e0862b5a",
         "email": "jackwill@gmail.com"
+    },
+    "David": {
+        "password_hash": "c82bee18db2112426eda9d382139083a6512d48c974f05a711d3586a8388e68e",
+        "email": "Jackwill@gmail.com"
     }
 }
