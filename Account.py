@@ -1,8 +1,9 @@
 import hashlib
 import re
+import sqlite3
 import time 
 
-ACCOUNT_FILE = 'user_accounts.txt'
+ACCOUNT_FILE = '\\user_accounts.db'
 FAILED_ATTEMPTS = {}
 MAX_ATTEMPTS = 5 # <-- This sets the 5-try limit
 LOCKOUT_DURATION = 300 # 5 minutes in seconds
@@ -27,6 +28,19 @@ def save_accounts(accounts):
              for u, data in accounts.items()]
     with open(ACCOUNT_FILE, 'w') as f:
         f.writelines(lines)
+
+def save_account_in_db(accounts):
+    databasePath = 'user_accounts.db'
+    connection = sqlite3.connect(databasePath)
+    cursor = connection.cursor()  
+    cursor.execute('''CREATE TABLE IF NOT EXISTS accounts
+                      (username TEXT PRIMARY KEY, password_hash TEXT, email TEXT)''')
+    for u, data in accounts.items():
+        cursor.execute('''INSERT OR REPLACE INTO accounts (username, password_hash, email)
+                          VALUES (?, ?, ?)''', (u, data['password_hash'], data['email']))  
+    connection.commit()
+    connection.close()
+
 
 # --- Security & Validation ---
 
@@ -61,7 +75,7 @@ def sign_up():
         print("Invalid email.")
 
     accounts[username] = {'password_hash': hashed_pwd, 'email': email}
-    save_accounts(accounts)
+    save_account_in_db(accounts)
     print(f"'{username}' created.")
 
 def log_in():
