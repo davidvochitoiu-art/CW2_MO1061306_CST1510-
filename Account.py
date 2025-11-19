@@ -1,138 +1,122 @@
-import json
-import hashlib # It used for secure password hashing for the passwords
-import re # Addedd for better Email Validation
+import hashlib
+import re
+import time 
 
-# --- File Hndling function ---
+ACCOUNT_FILE = 'user_accounts.txt'
+FAILED_ATTEMPTS = {}
+MAX_ATTEMPTS = 5 # <-- This sets the 5-try limit
+LOCKOUT_DURATION = 300 # 5 minutes in seconds
+
+# --- File Handling ---
 
 def load_accounts():
-    """Load all existing account from the JSON file."""
-    # FIX: Use 'user_accounts.json' to match save_accounts()
+    accounts = {}
     try:
-        with open('user_accounts.json', 'r') as file:
-            return json.load(file)
+        with open(ACCOUNT_FILE, 'r') as f:
+            for line in f:
+                parts = line.strip().split(',')
+                if len(parts) == 3:
+                    u, p_hash, e = parts
+                    accounts[u] = {'password_hash': p_hash, 'email': e}
     except FileNotFoundError:
-        # FIX: Return an empty DICTIONARY {} because accounts are stored as a dict {username: data}
-        return {}
-    except json.JSONDecodeError:
-        # FIX: Return an empty DICTIONARY {} if JSON is malformed
-        return {}
+        pass
+    return accounts
 
 def save_accounts(accounts):
-    """save the current account data back to the Json File."""
-    # This remains correct
-    with open('user_accounts.json', 'w') as file:
-        # safe with indentation for better readability
-        json.dump(accounts, file, indent=4)
+    lines = [f"{u},{data['password_hash']},{data['email']}\n" 
+             for u, data in accounts.items()]
+    with open(ACCOUNT_FILE, 'w') as f:
+        f.writelines(lines)
 
-# --- Security Helper Functions ---
-# ... (rest of the code is correct)
+# --- Security & Validation ---
 
 def hash_password(password):
-    """Hash the password using the SHA-256 for Security."""
-    # Encode the string to bytes, then hash it and return the hexadecimal representation
     return hashlib.sha256(password.encode()).hexdigest()
 
-# --- Validation Functions ---
-
 def validate_email(email):
-    """Validate the email format using regex."""
-    #  simple regex pattern for basic email validation
     email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(email_regex, email)
 
+# --- Core Logic (Highly Condensed) ---
 
 def sign_up():
-    """Collects new user details (username, email, password), stores them, and saves to file."""
-    print("\n--- New Account Sign Up ---")
-
     accounts = load_accounts()
-
-    # 1. Get Username (must be unique)
+    print("\n--- Sign Up ---")
+    
     while True:
-        username = input("Enter a new username: ").strip()
-        if not username:
-            print("Username cannot be empty.")
-        elif username in accounts:
-            print("Username already taken. Please choose another.")
-        else:
-            break
+        username = input("Username: ").strip()
+        if not username or username in accounts or ',' in username: continue
+        break
 
-    # 2. Get Password (simple length check)
     while True:
-        password = input("Enter a password (min 6 characters): ")
-        if len(password) < 6:
-            print("Password is too short. Please enter at least 6 characters.")
-        else:
+        password = input("Password (min 6): ")
+        if len(password) >= 6:
             hashed_pwd = hash_password(password)
             break
+        print("Password too short.")
 
-    # 3. Get Email (with validation)
     while True:
-        email = input("Enter your email: ").strip()
-        if not validate_email(email):
-            print("Invalid email format. Please try again.")
-        else:
-            break
+        email = input("Email: ").strip()
+        if validate_email(email) and ',' not in email: break
+        print("Invalid email.")
 
-    # Store the new account details
-    accounts[username] = {
-        'password_hash': hashed_pwd,
-        'email': email,
-    }
-
+    accounts[username] = {'password_hash': hashed_pwd, 'email': email}
     save_accounts(accounts)
-    print(f"\nAccount for '{username}' successfully created and stored!")
+    print(f"'{username}' created.")
 
 def log_in():
-    """Checks provided credentials against stored data."""
-    print("\n--- Account Log In ---")
-
+    """Handles user log-in with 5-try lockout."""
     accounts = load_accounts()
+    print("\n--- Log In ---")
+    
+    username = input("Username: ").strip()
+    password = input("Password: ")
 
-    username = input("Enter your username: ").strip()
-    password = input("Enter your password: ")
-
-    # 1. Check if the username exists
+    # Check Lockout Status
+    if username in FAILED_ATTEMPTS and FAILED_ATTEMPTS[username]['count'] >= MAX_ATTEMPTS:
+        if time.time() - FAILED_ATTEMPTS[username]['lockout_time'] < LOCKOUT_DURATION:
+            print("Locked out.")
+            return None
+        else:
+            FAILED_ATTEMPTS.pop(username)
+                
     if username not in accounts:
-        print("Login failed: Username not found.")
-        return None # Indicate failure
+        print("Login failed.")
+        return None 
 
-    # 2. Hash the entered password and compare it to the stored hash
-    entered_pwd_hash = hash_password(password)
-    stored_pwd_hash = accounts[username]['password_hash']
-
-    if entered_pwd_hash == stored_pwd_hash:
-        print(f"\nSuccess! Welcome back, {username}.")
-        # Return the user's details (excluding the hash) upon successful login
+    # Authenticate
+    if hash_password(password) == accounts[username]['password_hash']:
+        print(f"Welcome, {username}.")
+        if username in FAILED_ATTEMPTS: FAILED_ATTEMPTS.pop(username)
         user_data = accounts[username].copy()
         user_data.pop('password_hash')
         return user_data
     else:
-        print("Login failed: Incorrect password.")
-        return None # Indicate failure
+        print("Login failed.")
+        
+        # Update attempts
+        if username not in FAILED_ATTEMPTS:
+            FAILED_ATTEMPTS[username] = {'count': 0, 'lockout_time': 0}
+            
+        FAILED_ATTEMPTS[username]['count'] += 1
+        
+        # Check if 5 attempts are reached
+        if FAILED_ATTEMPTS[username]['count'] >= MAX_ATTEMPTS:
+            FAILED_ATTEMPTS[username]['lockout_time'] = time.time()
+            print(f"Max attempts reached. Locked out for 5 minutes.")
+            
+        return None
 
-# --- Main Program Execution ---
+# --- Main Execution ---
 
 if __name__ == "__main__":
-
-    print("# Account details and operations")
-    print("Welcome! Choose an option:")
-    print("1: Sign Up (Create New Account)")
-    print("2: Log In (Access Existing Account)")
-
+    print("# Account Operations (1: Sign Up | 2: Log In)")
     choice = input("Enter 1 or 2: ")
 
     if choice == '1':
         sign_up()
     elif choice == '2':
-        logged_in_user = log_in()
-
-        if logged_in_user:
-            print("\n--- Extracted Data (Successful Login) ---")
-            print("This data can be used to load user-specific features.")
-            print(f"User Data: {logged_in_user}")
-            # You would continue the application logic here
-        else:
-            print("Login attempt complete. Access denied.")
+        user = log_in()
+        print(f"Result: {user}")
     else:
         print("Invalid choice.")
